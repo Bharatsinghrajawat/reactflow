@@ -1,4 +1,3 @@
-// src/FlowDiagram.js
 import React, { useCallback, useMemo, useState } from "react";
 import ReactFlow, {
   useNodesState,
@@ -6,10 +5,13 @@ import ReactFlow, {
   addEdge,
   Controls,
   Background,
+  useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import "./FlowDiagram.css";
-import CustomNode from "./CustomNode";
+import CustomNode from "../CustomNode";
+import NodeEditor from "../NodeEditor";
+import SidePanel from "../SidePanel";
 
 const initialNodes = [];
 
@@ -23,9 +25,16 @@ const FlowDiagram = () => {
     height: "",
     width: "",
   });
-
+  const [flowKey, setFlowKey] = useState(0);
+  const { project } = useReactFlow();
   const onConnect = useCallback(
-    (params) => setEdges((els) => addEdge(params, els)),
+    (params) =>
+      setEdges((els) =>
+        addEdge(
+          { ...params, type: "step", markerEnd: { type: "arrowclosed" } },
+          els
+        )
+      ),
     []
   );
 
@@ -33,16 +42,19 @@ const FlowDiagram = () => {
     event.preventDefault();
 
     const nodeType = event.dataTransfer.getData("application/reactflow");
-    const position = {
-      x: event.clientX - event.target.getBoundingClientRect().left,
-      y: event.clientY - event.target.getBoundingClientRect().top,
-    };
+    const reactFlowBounds = event.target.getBoundingClientRect();
+
+    const position = project({
+      x: event.clientX - reactFlowBounds.left,
+      y: event.clientY - reactFlowBounds.top,
+    });
 
     const newNode = {
       id: `${+new Date()}`,
-      type: "custom", // Use the custom node type
+      type: "custom",
       position,
       data: { label: `node ${nodes.length + 1}` },
+      className: `dndnode ${nodeType}`,
       style: {
         background:
           nodeType === "Rectangle"
@@ -74,8 +86,8 @@ const FlowDiagram = () => {
     setNodeProps({
       name: node.data.label,
       color: node.style?.background || "",
-      height: node.style?.height || "",
-      width: node.style?.width || "",
+      height: parseInt(node.style?.height) || "",
+      width: parseInt(node.style?.width) || "",
     });
   };
 
@@ -88,102 +100,51 @@ const FlowDiagram = () => {
   };
 
   const handleSubmit = () => {
+    const height = parseInt(nodeProps.height);
+    const width = parseInt(nodeProps.width);
+    const fontSize = Math.min(height, width) / 4;
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === selectedNode.id) {
-          node.data.label = nodeProps.name;
-          node.style = {
-            ...node.style,
-            background: nodeProps.color,
-            height: nodeProps.height,
-            width: nodeProps.width,
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              label: nodeProps.name,
+            },
+            style: {
+              ...node.style,
+              background: nodeProps.color,
+              height: `${height}px`,
+              width: `${width}px`,
+              fontSize: `${fontSize}px`,
+            },
           };
         }
-        console.log(node,"nodeee",nodeProps)
         return node;
       })
     );
+    setFlowKey(flowKey + 1);
     setSelectedNode(null);
   };
 
-  const nodeTypes = useMemo(() => ({
-    custom: CustomNode,
-  }), []);
+  const nodeTypes = useMemo(
+    () => ({
+      custom: CustomNode,
+    }),
+    []
+  );
 
   return (
     <div className="dndflow">
       <aside>
-        <div className="description">
-          Drag these nodes to the pane on the right.
-        </div>
-        <div
-          className="dndnode input"
-          onDragStart={(event) =>
-            event.dataTransfer.setData("application/reactflow", "Rectangle")
-          }
-          draggable
-        >
-          Node
-        </div>
-        <div
-          className="dndnode default diamond"
-          onDragStart={(event) =>
-            event.dataTransfer.setData("application/reactflow", "Conditional")
-          }
-          draggable
-        >
-          Conditional
-        </div>
-        <div
-          className="dndnode output"
-          onDragStart={(event) =>
-            event.dataTransfer.setData("application/reactflow", "Iteration")
-          }
-          draggable
-        >
-          Iteration
-        </div>
+        <SidePanel />
         {selectedNode && (
-          <div className="node-editor">
-            <h3>Edit Node</h3>
-            <label>
-              Name:
-              <input
-                type="text"
-                name="name"
-                value={nodeProps.name}
-                onChange={handleChange}
-              />
-            </label>
-            <label>
-              Color:
-              <input
-                type="text"
-                name="color"
-                value={nodeProps.color}
-                onChange={handleChange}
-              />
-            </label>
-            <label>
-              Height:
-              <input
-                type="text"
-                name="height"
-                value={nodeProps.height}
-                onChange={handleChange}
-              />
-            </label>
-            <label>
-              Width:
-              <input
-                type="text"
-                name="width"
-                value={nodeProps.width}
-                onChange={handleChange}
-              />
-            </label>
-            <button onClick={handleSubmit}>Submit</button>
-          </div>
+          <NodeEditor
+            nodeProps={nodeProps}
+            handleChange={handleChange}
+            handleSubmit={handleSubmit}
+          />
         )}
       </aside>
       <div
@@ -192,6 +153,7 @@ const FlowDiagram = () => {
         onDragOver={onDragOver}
       >
         <ReactFlow
+          key={flowKey}
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
@@ -200,7 +162,6 @@ const FlowDiagram = () => {
           onNodeDoubleClick={onNodeDoubleClick}
           nodeTypes={nodeTypes}
           connectionLineType="step"
-          
           fitView
         >
           <Controls />
